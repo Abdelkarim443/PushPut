@@ -1,10 +1,20 @@
 <p>Veuillez choisir votre profil :</p>
 
-<ac:link ac:anchor="ancre-projet"><ac:structured-macro ac:name="button" ac:schema-version="1"><ac:parameter ac:name="label">Architecte Projet</ac:parameter></ac:structured-macro></ac:link> 
-<ac:link ac:anchor="ancre-production"><ac:structured-macro ac:name="button" ac:schema-version="1"><ac:parameter ac:name="label">Architecte Production</ac:parameter></ac:structured-macro></ac:link>
+<ac:link ac:anchor="ancre-projet">
+  <ac:structured-macro ac:name="button" ac:schema-version="1">
+    <ac:parameter ac:name="label">Architecte Projet</ac:parameter>
+  </ac:structured-macro>
+</ac:link> 
+
+<ac:link ac:anchor="ancre-production">
+  <ac:structured-macro ac:name="button" ac:schema-version="1">
+    <ac:parameter ac:name="label">Architecte Production</ac:parameter>
+  </ac:structured-macro>
+</ac:link>
 
 <ac:structured-macro ac:name="expand" ac:schema-version="1">
-  <ac:parameter ac:name="title"> </ac:parameter> <ac:rich-text-body>
+  <ac:parameter ac:name="title"></ac:parameter> 
+  <ac:rich-text-body>
     <h3 id="ancre-projet">Bienvenue, Architecte Projet !</h3>
     <p>Voici les informations spécifiques à votre rôle :</p>
     <ul>
@@ -13,7 +23,8 @@
       <li>Votre contact privilégié : [Nom de la personne à contacter]</li>
     </ul>
 
-    <ac:structured-macro ac:name="expand" ac:schema-version="1"> <ac:parameter ac:name="title">Afficher plus d'informations</ac:parameter>
+    <ac:structured-macro ac:name="expand" ac:schema-version="1">
+      <ac:parameter ac:name="title">Afficher plus d'informations</ac:parameter>
       <ac:rich-text-body>
         <p>Ici, vous pouvez ajouter des informations supplémentaires pour les Architectes Projet, comme :</p>
         <ul>
@@ -27,7 +38,8 @@
 </ac:structured-macro>
 
 <ac:structured-macro ac:name="expand" ac:schema-version="1">
-  <ac:parameter ac:name="title"> </ac:parameter> <ac:rich-text-body>
+  <ac:parameter ac:name="title"></ac:parameter> 
+  <ac:rich-text-body>
     <h3 id="ancre-production">Bienvenue, Architecte Production !</h3>
     <p>Voici les informations spécifiques à votre rôle :</p>
     <ul>
