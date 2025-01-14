@@ -1,54 +1,56 @@
 <p>Veuillez choisir votre profil :</p>
 
-<ac:link ac:anchor="ancre-projet" ac:link-text="Architecte Projet" /> 
-<ac:link ac:anchor="ancre-production" ac:link-text="Architecte Production" /> 
+<button onclick="afficherSection('projet')">Architecte Projet</button>
+<button onclick="afficherSection('production')">Architecte Production</button>
 
-<ac:structured-macro ac:name="expand" ac:schema-version="1">
-  <ac:parameter ac:name="title"></ac:parameter> 
-  <ac:rich-text-body>
-    <h3 id="ancre-projet">Bienvenue, Architecte Projet !</h3>
-    <p>Voici les informations spécifiques à votre rôle :</p>
-    <ul>
-      <li><ac:link><ri:page ri:content-title="Guide de démarrage pour les Architectes Projet" /></ac:link></li>
-      <li><ac:link><ri:page ri:content-title="Accès aux outils de conception et de modélisation" /></ac:link></li>
-      <li>Votre contact privilégié : [Nom de la personne à contacter]</li>
-    </ul>
+<div id="section-projet" style="display: none;">
+  <h3>Bienvenue, Architecte Projet !</h3>
+  <p>Voici les informations spécifiques à votre rôle :</p>
+  <ul>
+    <li><ac:link><ri:page ri:content-title="Guide de démarrage pour les Architectes Projet" /></ac:link></li>
+    <li><ac:link><ri:page ri:content-title="Accès aux outils de conception et de modélisation" /></ac:link></li>
+    <li>Votre contact privilégié : [Nom de la personne à contacter]</li>
+  </ul>
 
-    <ac:structured-macro ac:name="expand" ac:schema-version="1">
-      <ac:parameter ac:name="title">Afficher plus d'informations</ac:parameter>
-      <ac:rich-text-body>
-        <p>Ici, vous pouvez ajouter des informations supplémentaires pour les Architectes Projet, comme :</p>
-        <ul>
-          <li>Des liens vers des ressources utiles (documentation, tutoriels, etc.)</li>
-          <li>Une description plus détaillée des missions et des responsabilités</li>
-          <li>Des conseils pour réussir dans ce rôle</li>
-        </ul>
-      </ac:rich-text-body>
-    </ac:structured-macro> 
-  </ac:rich-text-body>
-</ac:structured-macro>
+  <ac:structured-macro ac:name="expand" ac:schema-version="1">
+    <ac:parameter ac:name="title">Afficher plus d'informations</ac:parameter>
+    <ac:rich-text-body>
+      <p>Ici, vous pouvez ajouter des informations supplémentaires pour les Architectes Projet, comme :</p>
+      <ul>
+        <li>Des liens vers des ressources utiles (documentation, tutoriels, etc.)</li>
+        <li>Une description plus détaillée des missions et des responsabilités</li>
+        <li>Des conseils pour réussir dans ce rôle</li>
+      </ul>
+    </ac:rich-text-body>
+  </ac:structured-macro> 
+</div>
 
-<ac:structured-macro ac:name="expand" ac:schema-version="1">
-  <ac:parameter ac:name="title"></ac:parameter> 
-  <ac:rich-text-body>
-    <h3 id="ancre-production">Bienvenue, Architecte Production !</h3>
-    <p>Voici les informations spécifiques à votre rôle :</p>
-    <ul>
-      <li><ac:link><ri:page ri:content-title="Guide de démarrage pour les Architectes Production" /></ac:link></li>
-      <li><ac:link><ri:page ri:content-title="Accès aux environnements de production et aux outils de monitoring" /></ac:link></li>
-      <li>Votre contact privilégié : [Nom de la personne à contacter]</li>
-    </ul>
+<div id="section-production" style="display: none;">
+  <h3>Bienvenue, Architecte Production !</h3>
+  <p>Voici les informations spécifiques à votre rôle :</p>
+  <ul>
+    <li><ac:link><ri:page ri:content-title="Guide de démarrage pour les Architectes Production" /></ac:link></li>
+    <li><ac:link><ri:page ri:content-title="Accès aux environnements de production et aux outils de monitoring" /></ac:link></li>
+    <li>Votre contact privilégié : [Nom de la personne à contacter]</li>
+  </ul>
 
-    <ac:structured-macro ac:name="expand" ac:schema-version="1">
-      <ac:parameter ac:name="title">Afficher plus d'informations</ac:parameter>
-      <ac:rich-text-body>
-        <p>Ici, vous pouvez ajouter des informations supplémentaires pour les Architectes Production, comme :</p>
-        <ul>
-          <li>Des liens vers des ressources utiles (documentation, tutoriels, etc.)</li>
-          <li>Une description plus détaillée des missions et des responsabilités</li>
-          <li>Des conseils pour réussir dans ce rôle</li>
-        </ul>
-      </ac:rich-text-body>
-    </ac:structured-macro>
-  </ac:rich-text-body>
-</ac:structured-macro>
+  <ac:structured-macro ac:name="expand" ac:schema-version="1">
+    <ac:parameter ac:name="title">Afficher plus d'informations</ac:parameter>
+    <ac:rich-text-body>
+      <p>Ici, vous pouvez ajouter des informations supplémentaires pour les Architectes Production, comme :</p>
+      <ul>
+        <li>Des liens vers des ressources utiles (documentation, tutoriels, etc.)</li>
+        <li>Une description plus détaillée des missions et des responsabilités</li>
+        <li>Des conseils pour réussir dans ce rôle</li>
+      </ul>
+    </ac:rich-text-body>
+  </ac:structured-macro>
+</div>
+
+<script>
+function afficherSection(section) {
+  document.getElementById("section-projet").style.display = "none";
+  document.getElementById("section-production").style.display = "none";
+  document.getElementById("section-" + section).style.display = "block";
+}
+</script>
