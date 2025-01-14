@@ -1,0 +1,29 @@
+<ac:structured-macro ac:name="panel" ac:schema-version="1" ac:macro-id="c2c4155f-9058-4f9e-8b94-4912c68c179c">
+  <ac:parameter ac:name="title">Bienvenue dans l'équipe !</ac:parameter>
+  <ac:rich-text-body>
+    <p>Nous sommes ravis de vous accueillir parmi nous !</p>
+    <p>Cette page a été créée pour vous aider à démarrer et à vous familiariser avec notre équipe et nos outils.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<p>Voici quelques ressources utiles pour vous aider à démarrer :</p>
+<ul>
+  <li><ac:link><ri:page ri:content-title="Guide de démarrage" /></ac:link> : Ce guide vous présente les bases de notre organisation et de nos processus.</li>
+  <li><ac:link><ri:page ri:content-title="Qui est qui ?" /></ac:link> : Découvrez qui fait quoi dans l'équipe et comment contacter chacun.</li>
+  <li><ac:link><ri:page ri:content-title="FAQ" /></ac:link> : Trouvez les réponses aux questions les plus fréquemment posées.</li>
+</ul>
+
+<ac:structured-macro ac:name="info" ac:schema-version="1" ac:macro-id="a7818093-5f65-4171-9613-82a4085d3a0a">
+  <ac:rich-text-body>
+    <p>N'hésitez pas à contacter [Nom de la personne à contacter] ou [Nom d'une autre personne à contacter] si vous avez des questions.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<ac:structured-macro ac:name="section" ac:schema-version="1" ac:macro-id="f7821573-939b-461b-a413-0d4f2a967f2d">
+  <ac:parameter ac:name="border">true</ac:parameter>
+  <ac:rich-text-body>
+    <p style="text-align: center;">
+      <ac:image ac:height="350" ac:width="600"><ri:attachment ri:filename="image_de_bienvenue.jpg" /></ac:image>
+    </p>
+  </ac:rich-text-body>
+</ac:structured-macro>
