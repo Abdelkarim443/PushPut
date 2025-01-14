@@ -1,45 +1,65 @@
-Bienvenue dans l'équipe IT ! 🚀
-&lt;ac:structured-macro ac:name="panel" ac:schema-version="1">
-&lt;ac:parameter ac:name="title">Ravi de vous accueillir !&lt;/ac:parameter>
-ac:rich-text-body
-<p>Cette page vous guidera dans vos premiers pas et vous fournira les informations essentielles pour bien démarrer votre aventure parmi nous. </p>
-&lt;/ac:rich-text-body>
-&lt;/ac:structured-macro>
+<ac:structured-macro ac:name="panel" ac:schema-version="1">
+  <ac:parameter ac:name="title">Bienvenue dans l'équipe IT ! 🚀</ac:parameter>
+  <ac:rich-text-body>
+    <p>Cette page vous guidera dans vos premiers pas et vous fournira les informations essentielles pour bien démarrer votre aventure parmi nous.</p> 
+  </ac:rich-text-body>
+</ac:structured-macro>
 
 <p>Pour commencer, veuillez sélectionner votre profil :</p>
 
-&lt;ac:structured-macro ac:name="choose" ac:schema-version="1">
-&lt;ac:parameter ac:name="current-user">true&lt;/ac:parameter>
-&lt;ac:parameter ac:name="variable">profilUtilisateur&lt;/ac:parameter>
-&lt;ac:parameter ac:name="default-option">Architecte Projet&lt;/ac:parameter>
-ac:rich-text-bodyArchitecte Projet&lt;/ac:rich-text-body>
-&lt;ac:parameter ac:name="option-1">Architecte Production&lt;/ac:parameter>
-&lt;ac:parameter ac:name="option-1-label">Architecte Production&lt;/ac:parameter>
-&lt;/ac:structured-macro>
+<ac:structured-macro ac:name="choose" ac:schema-version="1">
+  <ac:parameter ac:name="current-user">true</ac:parameter> <ac:parameter ac:name="variable">profilUtilisateur</ac:parameter>
+  <ac:parameter ac:name="default-option">Architecte Projet</ac:parameter> 
+  <ac:rich-text-body>Architecte Projet</ac:rich-text-body>
+  <ac:parameter ac:name="option-1">Architecte Production</ac:parameter>
+  <ac:parameter ac:name="option-1-label">Architecte Production</ac:parameter>
+</ac:structured-macro>
 
-&lt;ac:structured-macro ac:name="if" ac:schema-version="1">
-&lt;ac:parameter ac:name="condition">$profilUtilisateur == "Architecte Projet"&lt;/ac:parameter>
-ac:rich-text-body
-<h3>Bienvenue, Architecte Projet !</h3>
-<p>Voici les informations spécifiques à votre rôle :</p>
-<ul>
-<li>ac:link&lt;ri:page ri:content-title="Guide de démarrage pour les Architectes Projet" />&lt;/ac:link></li>
-<li>ac:link&lt;ri:page ri:content-title="Accès aux outils de conception et de modélisation" />&lt;/ac:link></li>
-<li>Votre contact privilégié : [Nom de la personne à contacter]</li>
-</ul>
-&lt;/ac:rich-text-body>
-&lt;/ac:structured-macro>
+<ac:structured-macro ac:name="if" ac:schema-version="1">
+  <ac:parameter ac:name="condition">$profilUtilisateur == "Architecte Projet"</ac:parameter>
+  <ac:rich-text-body>
+    <h3>Bienvenue, Architecte Projet !</h3>
+    <p>Voici les informations spécifiques à votre rôle :</p>
+    <ul>
+      <li><ac:link><ri:page ri:content-title="Guide de démarrage pour les Architectes Projet" /></ac:link></li>
+      <li><ac:link><ri:page ri:content-title="Accès aux outils de conception et de modélisation" /></ac:link></li>
+      <li>Votre contact privilégié : [Nom de la personne à contacter]</li>
+    </ul>
 
-&lt;ac:structured-macro ac:name="if" ac:schema-version="1">
-&lt;ac:parameter ac:name="condition">$profilUtilisateur == "Architecte Production"&lt;/ac:parameter>
-ac:rich-text-body
-<h3>Bienvenue, Architecte Production !</h3>
-<p>Voici les informations spécifiques à votre rôle :</p>
-<ul>
-<li>ac:link&lt;ri:page ri:content-title="Guide de démarrage pour les Architectes Production" />&lt;/ac:link></li>
-<li>ac:link&lt;ri:page ri:content-title="Accès aux environnements de production et aux outils de monitoring" />&lt;/ac:link></li>
-<li>Votre contact privilégié : [Nom de la personne à contacter]</li>
-</ul>
-&lt;/ac:rich-text-body>
-&lt;/ac:structured-macro>
+    <ac:structured-macro ac:name="expand" ac:schema-version="1"> <ac:parameter ac:name="title">Afficher plus d'informations</ac:parameter>
+      <ac:rich-text-body>
+        <p>Ici, vous pouvez ajouter des informations supplémentaires pour les Architectes Projet, comme :</p>
+        <ul>
+          <li>Des liens vers des ressources utiles (documentation, tutoriels, etc.)</li>
+          <li>Une description plus détaillée des missions et des responsabilités</li>
+          <li>Des conseils pour réussir dans ce rôle</li>
+        </ul>
+      </ac:rich-text-body>
+    </ac:structured-macro> 
+  </ac:rich-text-body>
+</ac:structured-macro>
 
+<ac:structured-macro ac:name="if" ac:schema-version="1">
+  <ac:parameter ac:name="condition">$profilUtilisateur == "Architecte Production"</ac:parameter>
+  <ac:rich-text-body>
+    <h3>Bienvenue, Architecte Production !</h3>
+    <p>Voici les informations spécifiques à votre rôle :</p>
+    <ul>
+      <li><ac:link><ri:page ri:content-title="Guide de démarrage pour les Architectes Production" /></ac:link></li>
+      <li><ac:link><ri:page ri:content-title="Accès aux environnements de production et aux outils de monitoring" /></ac:link></li>
+      <li>Votre contact privilégié : [Nom de la personne à contacter]</li>
+    </ul>
+
+    <ac:structured-macro ac:name="expand" ac:schema-version="1">
+      <ac:parameter ac:name="title">Afficher plus d'informations</ac:parameter>
+      <ac:rich-text-body>
+        <p>Ici, vous pouvez ajouter des informations supplémentaires pour les Architectes Production, comme :</p>
+        <ul>
+          <li>Des liens vers des ressources utiles (documentation, tutoriels, etc.)</li>
+          <li>Une description plus détaillée des missions et des responsabilités</li>
+          <li>Des conseils pour réussir dans ce rôle</li>
+        </ul>
+      </ac:rich-text-body>
+    </ac:structured-macro>
+  </ac:rich-text-body>
+</ac:structured-macro>
