@@ -1,24 +1,11 @@
-<ac:structured-macro ac:name="panel" ac:schema-version="1">
-  <ac:parameter ac:name="title">Bienvenue dans l'équipe IT ! 🚀</ac:parameter>
-  <ac:rich-text-body>
-    <p>Cette page vous guidera dans vos premiers pas et vous fournira les informations essentielles pour bien démarrer votre aventure parmi nous.</p> 
-  </ac:rich-text-body>
-</ac:structured-macro>
+<p>Veuillez choisir votre profil :</p>
 
-<p>Pour commencer, veuillez sélectionner votre profil :</p>
+<ac:link ac:anchor="ancre-projet"><ac:structured-macro ac:name="button" ac:schema-version="1"><ac:parameter ac:name="label">Architecte Projet</ac:parameter></ac:structured-macro></ac:link> 
+<ac:link ac:anchor="ancre-production"><ac:structured-macro ac:name="button" ac:schema-version="1"><ac:parameter ac:name="label">Architecte Production</ac:parameter></ac:structured-macro></ac:link>
 
-<ac:structured-macro ac:name="choose" ac:schema-version="1">
-  <ac:parameter ac:name="current-user">true</ac:parameter> <ac:parameter ac:name="variable">profilUtilisateur</ac:parameter>
-  <ac:parameter ac:name="default-option">Architecte Projet</ac:parameter> 
-  <ac:rich-text-body>Architecte Projet</ac:rich-text-body>
-  <ac:parameter ac:name="option-1">Architecte Production</ac:parameter>
-  <ac:parameter ac:name="option-1-label">Architecte Production</ac:parameter>
-</ac:structured-macro>
-
-<ac:structured-macro ac:name="if" ac:schema-version="1">
-  <ac:parameter ac:name="condition">$profilUtilisateur == "Architecte Projet"</ac:parameter>
-  <ac:rich-text-body>
-    <h3>Bienvenue, Architecte Projet !</h3>
+<ac:structured-macro ac:name="expand" ac:schema-version="1">
+  <ac:parameter ac:name="title"> </ac:parameter> <ac:rich-text-body>
+    <h3 id="ancre-projet">Bienvenue, Architecte Projet !</h3>
     <p>Voici les informations spécifiques à votre rôle :</p>
     <ul>
       <li><ac:link><ri:page ri:content-title="Guide de démarrage pour les Architectes Projet" /></ac:link></li>
@@ -39,10 +26,9 @@
   </ac:rich-text-body>
 </ac:structured-macro>
 
-<ac:structured-macro ac:name="if" ac:schema-version="1">
-  <ac:parameter ac:name="condition">$profilUtilisateur == "Architecte Production"</ac:parameter>
-  <ac:rich-text-body>
-    <h3>Bienvenue, Architecte Production !</h3>
+<ac:structured-macro ac:name="expand" ac:schema-version="1">
+  <ac:parameter ac:name="title"> </ac:parameter> <ac:rich-text-body>
+    <h3 id="ancre-production">Bienvenue, Architecte Production !</h3>
     <p>Voici les informations spécifiques à votre rôle :</p>
     <ul>
       <li><ac:link><ri:page ri:content-title="Guide de démarrage pour les Architectes Production" /></ac:link></li>
