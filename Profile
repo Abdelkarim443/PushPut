@@ -1,16 +1,7 @@
 <p>Veuillez choisir votre profil :</p>
 
-<ac:link ac:anchor="ancre-projet">
-  <ac:structured-macro ac:name="button" ac:schema-version="1">
-    <ac:parameter ac:name="label">Architecte Projet</ac:parameter>
-  </ac:structured-macro>
-</ac:link> 
-
-<ac:link ac:anchor="ancre-production">
-  <ac:structured-macro ac:name="button" ac:schema-version="1">
-    <ac:parameter ac:name="label">Architecte Production</ac:parameter>
-  </ac:structured-macro>
-</ac:link>
+<ac:link ac:anchor="ancre-projet" ac:link-text="Architecte Projet" /> 
+<ac:link ac:anchor="ancre-production" ac:link-text="Architecte Production" /> 
 
 <ac:structured-macro ac:name="expand" ac:schema-version="1">
   <ac:parameter ac:name="title"></ac:parameter> 
