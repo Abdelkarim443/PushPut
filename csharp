@@ -1,0 +1,91 @@
+using Microsoft.Exchange.WebServices.Data;
+using System;
+using System.Collections.Generic;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
+using System.IO;
+
+namespace MailboxAdminAuditLogSearch
+{
+    class Program
+    {
+        // Configure these settings
+        static readonly string ImpersonatedUser = "admin@yourdomain.com";
+        static readonly int MaxThreads = 10; // Adjust based on your environment
+        static readonly string InputCsvFile = "mailboxes.csv"; // Input CSV file with mailbox addresses
+        static readonly string OutputCsvFile = "audit_settings.csv"; // Output CSV file for audit settings
+        static readonly TimeSpan DefaultAuditLogAgeLimit = TimeSpan.FromDays(90); // Default audit log age limit
+
+        static void Main(string args)
+        {
+            // Connect to Exchange Online
+            ExchangeService service = new ExchangeService(ExchangeVersion.Exchange2013_SP1);
+            service.Credentials = new WebCredentials("yourusername", "yourpassword");
+            service.AutodiscoverUrl("yourusername@yourdomain.com");
+            service.ImpersonatedUserId = new ImpersonatedUserId(ConnectingIdType.SmtpAddress, ImpersonatedUser);
+
+            // Read mailboxes from CSV
+            List<string> mailboxAddresses = ReadMailboxesFromCsv(InputCsvFile);
+
+            // Concurrent queue to store mailboxes
+            ConcurrentQueue<string> mailboxQueue = new ConcurrentQueue<string>(mailboxAddresses);
+
+            // List to store audit settings
+            ConcurrentBag<MailboxAuditSettings> auditSettingsList = new ConcurrentBag<MailboxAuditSettings>();
+
+            // Parallel processing of mailboxes
+            Parallel.For(0, MaxThreads, i =>
+            {
+                string mailboxAddress;
+                while (mailboxQueue.TryDequeue(out mailboxAddress))
+                {
+                    try
+                    {
+                        // Get mailbox audit settings
+                        MailboxAuditSettings auditSettings = GetMailboxAuditSettings(service, mailboxAddress);
+                        // Add to list only if audit is disabled or age limit is not default
+                        if (!auditSettings.IsAuditEnabled || auditSettings.AuditLogAgeLimit!= DefaultAuditLogAgeLimit)
+                        {
+                            auditSettingsList.Add(auditSettings);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error processing mailbox {mailboxAddress}: {ex.Message}");
+                    }
+                }
+            });
+
+            // Write audit settings to CSV
+            WriteAuditSettingsToCsv(auditSettingsList, OutputCsvFile);
+
+            Console.WriteLine("Finished processing audit settings.");
+        }
+
+        //... (ReadMailboxesFromCsv and WriteAuditSettingsToCsv functions remain the same)
+
+        static MailboxAuditSettings GetMailboxAuditSettings(ExchangeService service, string mailboxAddress)
+        {
+            Mailbox mailbox = new Mailbox(service);
+            mailbox.Address = mailboxAddress;
+            mailbox.Load(new PropertySet(BasePropertySet.IdOnly, MailboxSchema.AuditEnabled, MailboxSchema.AuditLogAgeLimit));
+
+            MailboxAuditSettings auditSettings = new MailboxAuditSettings
+            {
+                Mailbox = mailboxAddress,
+                IsAuditEnabled = mailbox.AuditEnabled,
+                AuditLogAgeLimit = mailbox.AuditLogAgeLimit
+            };
+
+            return auditSettings;
+        }
+    }
+
+    // Class to store mailbox audit settings (modified to store TimeSpan for AuditLogAgeLimit)
+    public class MailboxAuditSettings
+    {
+        public string Mailbox { get; set; }
+        public bool IsAuditEnabled { get; set; }
+        public TimeSpan AuditLogAgeLimit { get; set; }
+    }
+}
