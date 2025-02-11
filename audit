@@ -1,0 +1,62 @@
+# Connect to Exchange Online
+$UserCredential = Get-Credential
+Connect-ExchangeOnline -UserPrincipalName youradmin@yourdomain.com -ShowProgress $true
+
+# Get all mailboxes
+$mailboxes = Get-Mailbox -ResultSize Unlimited
+
+# Function to check and enable audit logging
+function Check-Enable-AuditLogging {
+    param (
+        [string]$MailboxIdentity
+    )
+
+    `${auditStatus = Get-Mailbox -Identity}$`MailboxIdentity | Select-Object Identity, AuditEnabled
+
+    if (-not $auditStatus.AuditEnabled) {
+        # Output mailbox identity if audit logging is disabled
+        [PSCustomObject]@{Mailbox = $MailboxIdentity}
+    }
+}
+
+# Create a script block for the job
+$scriptBlock = {
+    param ($mailbox)
+    Check-Enable-AuditLogging -MailboxIdentity $mailbox.Identity
+}
+
+# Batch size for parallel processing
+$batchSize = 50
+`${totalMailboxes =}$`mailboxes.Count
+`${batches = [math]::Ceiling(}$`totalMailboxes / $batchSize)
+
+# Array to store mailboxes with audit logging disabled
+$disabledAuditMailboxes = @()
+
+# Process mailboxes in batches
+for (`${i = 0;}$`i -lt `${batches;}$`i++) {
+    `${startIndex =}$`i * $batchSize
+    `${endIndex = [math]::Min((}$`i + 1) * `${batchSize,}$`totalMailboxes) - 1
+    `${batchMailboxes =}$`mailboxes[`${startIndex..}$`endIndex]
+
+    # Run jobs in parallel for the current batch
+    $jobs = @()
+    foreach (`${mailbox in}$`batchMailboxes) {
+        `${jobs += Start-Job -ScriptBlock}$`scriptBlock -ArgumentList $mailbox
+    }
+
+    # Wait for all jobs in the batch to complete
+    `${jobs | ForEach-Object {}$`_ | Wait-Job }
+
+    # Get the results and collect mailboxes with audit logging disabled
+    `${jobs | ForEach-Object {}$`disabledAuditMailboxes += Receive-Job -Job $_ }
+
+    # Clean up jobs
+    `${jobs | ForEach-Object { Remove-Job -Job}$`_ }
+}
+
+# Export the results to a CSV file
+$disabledAuditMailboxes | Export-Csv -Path "DisabledAuditMailboxes.csv" -NoTypeInformation
+
+# Disconnect from Exchange Online
+Disconnect-ExchangeOnline -Confirm:$false
