@@ -1,0 +1,9 @@
+# Example CSV file for testing the migration script
+# Filename: Mailboxes_20250321.csv
+
+Identity,Department,Location
+user1@contoso.com,IT,New York
+user2@contoso.com,HR,Chicago
+user3@contoso.com,Finance,Boston
+user4@contoso.com,Marketing,Seattle
+user5@contoso.com,Sales,San Francisco
