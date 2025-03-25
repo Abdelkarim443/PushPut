@@ -13,6 +13,7 @@ This project contains a series of PowerShell scripts to automate the migration o
   - Last logon less than 5 years ago
 - Updates custom attribute 6 (CustomAttribute6) with the format "DEL_MIG;STEP1;OK;DATE" for eligible mailboxes
 - Updates custom attribute 6 (CustomAttribute6) with the format "DEL_MIG;STEP1;KO;DATE" for non-eligible mailboxes
+- Moves processed CSV files to the "Imported CSVs" folder after processing
 - Generates detailed log files in the Logs folder
 
 ## Script 2: Create Cloud Shared Mailboxes (Step2-CreateCloudSharedMailboxes.ps1)
@@ -32,10 +33,9 @@ This project contains a series of PowerShell scripts to automate the migration o
 ### Features
 - Finds mailboxes with CustomAttribute6 containing "STEP2;OK" from Step 2
 - Executes New-MailboxRestoreRequest to migrate mailbox content from on-premises to cloud
-- Monitors restore request status and provides real-time progress updates
-- Manages concurrent migrations with configurable limits
-- Updates CustomAttribute6 on both mailboxes to track migration progress
-- Generates detailed migration status reports
+- Updates CustomAttribute6 to "DEL_MIG;STEP3;INITIATED;DATE" to track migration initiation
+- Does not verify completion (this will be handled by a separate script)
+- Generates a report of initiated migrations
 - Handles errors and provides comprehensive logging
 
 ### Migration Parameters
@@ -43,8 +43,6 @@ The script allows customization of several migration parameters:
 - Allow large items (with configurable large item limit)
 - Accept large data loss
 - Bad item limit
-- Maximum concurrent migrations
-- Status check interval
 
 ### Prerequisites
 - PowerShell 5.1 or higher
@@ -63,6 +61,7 @@ The scripts use predefined paths that will be created automatically if they don'
 - Base directory: C:\ExchangeMigration
 - Logs directory: C:\ExchangeMigration\Logs
 - CSV directory: C:\ExchangeMigration\CSV
+- Imported CSVs directory: C:\ExchangeMigration\Imported CSVs
 - Attributes export directory: C:\ExchangeMigration\AttributesExport
 - Reports directory: C:\ExchangeMigration\Reports
 
@@ -70,12 +69,14 @@ You can modify these paths at the beginning of each script to match your environ
 
 ### Usage
 1. First run Step1-ValidateMailboxes.ps1 to validate mailboxes
+   - CSV files with today's date will be processed and moved to the "Imported CSVs" folder
 2. Then run Step2-CreateCloudSharedMailboxes.ps1 to create cloud shared mailboxes
-3. Finally run Step3-ExecuteMailboxMigration.ps1 to perform the actual migration:
+3. Run Step3-ExecuteMailboxMigration.ps1 to initiate the mailbox migration:
    ```powershell
    .\Step3-ExecuteMailboxMigration.ps1
    ```
 4. When prompted, enter the migration parameters or accept the defaults
+5. Use a separate script (to be created) to verify migration completion
 
 ### Logging
 Logs are created in the Logs directory (C:\ExchangeMigration\Logs by default) with the format:
@@ -86,7 +87,7 @@ Step3-ExecuteMailboxMigration_YYYYMMDD_HHMMSS.log
 ```
 
 ### Migration Reports
-Migration status reports are created in the Reports directory (C:\ExchangeMigration\Reports by default) with the format:
+Migration initiation reports are created in the Reports directory (C:\ExchangeMigration\Reports by default) with the format:
 ```
-MigrationStatus_YYYYMMDD_HHMMSS.csv
+MigrationInitiated_YYYYMMDD_HHMMSS.csv
 ```

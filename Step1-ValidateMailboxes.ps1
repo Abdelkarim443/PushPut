@@ -1,11 +1,12 @@
 #==========================================================================
 # Script: Step1-ValidateMailboxes.ps1
 # Author: Manus
-# Date: 03/21/2025
+# Date: 03/25/2025
 # Description: Script to validate mailboxes for migration to Exchange Online
 #              - Imports CSV files with today's date
 #              - Checks criteria (size < 40 GB, no archive, last logon < 5 years)
 #              - Updates custom attribute 6 with migration status
+#              - Moves processed CSV files to "Imported CSVs" folder
 #==========================================================================
 
 #==========================================================================
@@ -15,6 +16,7 @@
 $BasePath = "C:\ExchangeMigration"
 $LogPath = "$BasePath\Logs"
 $CSVPath = "$BasePath\CSV"
+$ImportedCSVPath = "$BasePath\Imported CSVs"
 
 # Log file and CSV pattern
 $LogFile = Join-Path -Path $LogPath -ChildPath "Step1-ValidateMailboxes_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
@@ -102,6 +104,7 @@ function Import-MigrationCSV {
         Write-Log "$($CSVFiles.Count) CSV file(s) found" -Level "INFO"
         
         $AllMailboxes = @()
+        $ProcessedFiles = @()
         
         foreach ($CSVFile in $CSVFiles) {
             Write-Log "Importing file: $($CSVFile.FullName)" -Level "INFO"
@@ -109,6 +112,7 @@ function Import-MigrationCSV {
             try {
                 $Mailboxes = Import-Csv -Path $CSVFile.FullName -ErrorAction Stop
                 $AllMailboxes += $Mailboxes
+                $ProcessedFiles += $CSVFile
                 Write-Log "Import successful: $($Mailboxes.Count) entries found in $($CSVFile.Name)" -Level "SUCCESS"
             }
             catch {
@@ -117,12 +121,72 @@ function Import-MigrationCSV {
         }
         
         Write-Log "Total mailboxes imported: $($AllMailboxes.Count)" -Level "INFO"
-        return $AllMailboxes
+        
+        # Return both the mailboxes and the processed files
+        return @{
+            Mailboxes = $AllMailboxes
+            Files = $ProcessedFiles
+        }
     }
     catch {
         Write-Log "Error searching for CSV files: $($_.Exception.Message)" -Level "ERROR"
         return $null
     }
+}
+
+#==========================================================================
+# Function to move processed CSV files
+#==========================================================================
+function Move-ProcessedCSVFiles {
+    param (
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo[]]$Files,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationFolder
+    )
+    
+    Write-Log "Moving processed CSV files to: $DestinationFolder" -Level "INFO"
+    
+    # Create destination folder if it doesn't exist
+    if (-not (Test-Path -Path $DestinationFolder)) {
+        try {
+            New-Item -Path $DestinationFolder -ItemType Directory -Force | Out-Null
+            Write-Log "Imported CSVs folder created: $DestinationFolder" -Level "INFO"
+        }
+        catch {
+            Write-Log "Unable to create Imported CSVs folder: $($_.Exception.Message)" -Level "ERROR"
+            return $false
+        }
+    }
+    
+    $MovedCount = 0
+    $ErrorCount = 0
+    
+    foreach ($File in $Files) {
+        $DestinationPath = Join-Path -Path $DestinationFolder -ChildPath $File.Name
+        
+        # If file already exists in destination, add timestamp to filename
+        if (Test-Path -Path $DestinationPath) {
+            $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+            $NewFileName = [System.IO.Path]::GetFileNameWithoutExtension($File.Name) + "_" + $Timestamp + [System.IO.Path]::GetExtension($File.Name)
+            $DestinationPath = Join-Path -Path $DestinationFolder -ChildPath $NewFileName
+        }
+        
+        try {
+            Move-Item -Path $File.FullName -Destination $DestinationPath -Force -ErrorAction Stop
+            Write-Log "Moved file: $($File.Name) to $DestinationPath" -Level "SUCCESS"
+            $MovedCount++
+        }
+        catch {
+            Write-Log "Error moving file $($File.Name): $($_.Exception.Message)" -Level "ERROR"
+            $ErrorCount++
+        }
+    }
+    
+    Write-Log "File move operation complete: $MovedCount files moved, $ErrorCount errors" -Level "INFO"
+    
+    return ($ErrorCount -eq 0)
 }
 
 #==========================================================================
@@ -243,12 +307,15 @@ function Start-MailboxValidation {
     Write-Log "Starting mailbox validation process" -Level "INFO"
     
     # Import CSV files
-    $Mailboxes = Import-MigrationCSV -FolderPath $CSVPath -FilePattern $CSVPattern
+    $ImportResult = Import-MigrationCSV -FolderPath $CSVPath -FilePattern $CSVPattern
     
-    if ($null -eq $Mailboxes -or $Mailboxes.Count -eq 0) {
+    if ($null -eq $ImportResult -or $null -eq $ImportResult.Mailboxes -or $ImportResult.Mailboxes.Count -eq 0) {
         Write-Log "No mailboxes to process. Script ending." -Level "WARNING"
         return
     }
+    
+    $Mailboxes = $ImportResult.Mailboxes
+    $ProcessedFiles = $ImportResult.Files
     
     # Statistics
     $TotalMailboxes = $Mailboxes.Count
@@ -288,6 +355,17 @@ function Start-MailboxValidation {
         
         if (-not $UpdateResult) {
             $ErrorMailboxes++
+        }
+    }
+    
+    # Move processed CSV files to Imported CSVs folder
+    if ($ProcessedFiles.Count -gt 0) {
+        $MoveResult = Move-ProcessedCSVFiles -Files $ProcessedFiles -DestinationFolder $ImportedCSVPath
+        if ($MoveResult) {
+            Write-Log "Successfully moved all processed CSV files to the Imported CSVs folder" -Level "SUCCESS"
+        }
+        else {
+            Write-Log "There were errors moving some CSV files to the Imported CSVs folder" -Level "WARNING"
         }
     }
     
@@ -382,6 +460,18 @@ function Initialize-Environment {
         }
         catch {
             Write-Log "Error creating CSV directory: $($_.Exception.Message)" -Level "ERROR"
+            return $false
+        }
+    }
+    
+    # Check and create Imported CSVs directory
+    if (-not (Test-Path -Path $ImportedCSVPath)) {
+        try {
+            New-Item -Path $ImportedCSVPath -ItemType Directory -Force | Out-Null
+            Write-Log "Imported CSVs directory created: $ImportedCSVPath" -Level "SUCCESS"
+        }
+        catch {
+            Write-Log "Error creating Imported CSVs directory: $($_.Exception.Message)" -Level "ERROR"
             return $false
         }
     }

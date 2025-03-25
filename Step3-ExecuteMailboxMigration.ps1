@@ -1,12 +1,12 @@
 #==========================================================================
 # Script: Step3-ExecuteMailboxMigration.ps1
 # Author: Manus
-# Date: 03/21/2025
+# Date: 03/25/2025
 # Description: Script to execute mailbox migration via Mailbox Restore Request
 #              - Finds mailboxes with CustomAttribute6 containing "STEP2;OK" from Step 2
 #              - Executes New-MailboxRestoreRequest to migrate mailbox content
-#              - Monitors restore request status
-#              - Updates tracking attributes after successful migration
+#              - Updates CustomAttribute6 to track migration initiation
+#              - Does not verify completion (handled by a separate script)
 #==========================================================================
 
 #==========================================================================
@@ -22,7 +22,7 @@ $ReportsPath = "$BasePath\Reports"
 $LogFile = Join-Path -Path $LogPath -ChildPath "Step3-ExecuteMailboxMigration_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 
 # Status report file
-$StatusReportFile = Join-Path -Path $ReportsPath -ChildPath "MigrationStatus_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
+$StatusReportFile = Join-Path -Path $ReportsPath -ChildPath "MigrationInitiated_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
 
 #==========================================================================
 # Logging Function
@@ -294,6 +294,28 @@ function Start-MailboxRestoreRequest {
         if ($RestoreRequest) {
             Write-Log "Mailbox restore request created successfully. Request ID: $($RestoreRequest.Identity)" -Level "SUCCESS"
             
+            # Update CustomAttribute6 to indicate migration has been initiated
+            $CurrentDate = Get-Date -Format "yyyy-MM-dd"
+            $AttributeValue = "DEL_MIG;STEP3;INITIATED;$CurrentDate"
+            
+            # Update on-premises mailbox
+            try {
+                Set-OnpremMailbox -Identity $OnPremIdentity -CustomAttribute6 $AttributeValue -ErrorAction Stop
+                Write-Log "Updated on-premises mailbox $OnPremIdentity CustomAttribute6 to $AttributeValue" -Level "SUCCESS"
+            }
+            catch {
+                Write-Log "Error updating on-premises mailbox $OnPremIdentity: $($_.Exception.Message)" -Level "ERROR"
+            }
+            
+            # Update cloud mailbox
+            try {
+                Set-CloudMailbox -Identity $CloudIdentity -CustomAttribute6 $AttributeValue -ErrorAction Stop
+                Write-Log "Updated cloud mailbox $CloudIdentity CustomAttribute6 to $AttributeValue" -Level "SUCCESS"
+            }
+            catch {
+                Write-Log "Error updating cloud mailbox $CloudIdentity: $($_.Exception.Message)" -Level "ERROR"
+            }
+            
             # Return the request information
             return [PSCustomObject]@{
                 RequestId = $RestoreRequest.Identity
@@ -312,140 +334,6 @@ function Start-MailboxRestoreRequest {
     catch {
         Write-Log "Error creating mailbox restore request for $OnPremIdentity: $($_.Exception.Message)" -Level "ERROR"
         return $null
-    }
-}
-
-#==========================================================================
-# Function to monitor restore request status
-#==========================================================================
-function Get-RestoreRequestStatus {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$RequestId,
-        
-        [Parameter(Mandatory = $false)]
-        [int]$MaxRetries = 5,
-        
-        [Parameter(Mandatory = $false)]
-        [int]$RetryIntervalSeconds = 60
-    )
-    
-    Write-Log "Checking status for restore request: $RequestId" -Level "INFO"
-    
-    $RetryCount = 0
-    $Status = $null
-    
-    do {
-        try {
-            $RestoreRequest = Get-CloudMailboxRestoreRequest -Identity $RequestId -ErrorAction Stop
-            $Status = $RestoreRequest.Status
-            $PercentComplete = $RestoreRequest.PercentComplete
-            
-            Write-Log "Restore request $RequestId status: $Status ($PercentComplete% complete)" -Level "INFO"
-            
-            # If the request is completed or failed, return the status
-            if ($Status -eq "Completed" -or $Status -eq "Failed" -or $Status -eq "CompletedWithWarning") {
-                return [PSCustomObject]@{
-                    RequestId = $RequestId
-                    Status = $Status
-                    PercentComplete = $PercentComplete
-                    CompletionTime = $RestoreRequest.CompletionTimestamp
-                    FailureCode = $RestoreRequest.FailureCode
-                    FailureType = $RestoreRequest.FailureType
-                    Message = $RestoreRequest.Message
-                }
-            }
-            
-            # If the request is still in progress, wait and retry
-            if ($RetryCount -lt $MaxRetries) {
-                Write-Log "Restore request still in progress. Waiting $RetryIntervalSeconds seconds before checking again..." -Level "INFO"
-                Start-Sleep -Seconds $RetryIntervalSeconds
-            }
-            
-            $RetryCount++
-        }
-        catch {
-            Write-Log "Error checking restore request status: $($_.Exception.Message)" -Level "ERROR"
-            $RetryCount++
-            
-            if ($RetryCount -lt $MaxRetries) {
-                Write-Log "Retrying in $RetryIntervalSeconds seconds..." -Level "INFO"
-                Start-Sleep -Seconds $RetryIntervalSeconds
-            }
-        }
-    } while ($RetryCount -lt $MaxRetries)
-    
-    Write-Log "Maximum retries reached. Unable to determine final status for restore request $RequestId" -Level "WARNING"
-    
-    # Return the last known status
-    return [PSCustomObject]@{
-        RequestId = $RequestId
-        Status = $Status
-        PercentComplete = $PercentComplete
-        CompletionTime = $null
-        FailureCode = "Unknown"
-        FailureType = "Unknown"
-        Message = "Maximum retries reached. Unable to determine final status."
-    }
-}
-
-#==========================================================================
-# Function to update status after migration
-#==========================================================================
-function Update-MigrationStatus {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$OnPremIdentity,
-        
-        [Parameter(Mandatory = $true)]
-        [string]$CloudIdentity,
-        
-        [Parameter(Mandatory = $true)]
-        [string]$Status,
-        
-        [Parameter(Mandatory = $false)]
-        [string]$Message = ""
-    )
-    
-    $CurrentDate = Get-Date -Format "yyyy-MM-dd"
-    
-    if ($Status -eq "Completed" -or $Status -eq "CompletedWithWarning") {
-        $AttributeValue = "DEL_MIG;STEP3;OK;$CurrentDate"
-        $StatusText = "OK"
-    }
-    else {
-        $AttributeValue = "DEL_MIG;STEP3;KO;$CurrentDate"
-        $StatusText = "KO"
-    }
-    
-    Write-Log "Updating status for $OnPremIdentity -> $CloudIdentity: $StatusText" -Level "INFO"
-    
-    # Update on-premises mailbox
-    try {
-        Set-OnpremMailbox -Identity $OnPremIdentity -CustomAttribute6 $AttributeValue -ErrorAction Stop
-        Write-Log "Updated on-premises mailbox $OnPremIdentity CustomAttribute6 to $AttributeValue" -Level "SUCCESS"
-    }
-    catch {
-        Write-Log "Error updating on-premises mailbox $OnPremIdentity: $($_.Exception.Message)" -Level "ERROR"
-    }
-    
-    # Update cloud mailbox
-    try {
-        Set-CloudMailbox -Identity $CloudIdentity -CustomAttribute6 $AttributeValue -ErrorAction Stop
-        Write-Log "Updated cloud mailbox $CloudIdentity CustomAttribute6 to $AttributeValue" -Level "SUCCESS"
-    }
-    catch {
-        Write-Log "Error updating cloud mailbox $CloudIdentity: $($_.Exception.Message)" -Level "ERROR"
-    }
-    
-    # Return status object for reporting
-    return [PSCustomObject]@{
-        OnPremIdentity = $OnPremIdentity
-        CloudIdentity = $CloudIdentity
-        Status = $Status
-        StatusValue = $StatusText
-        CompletionDate = $CurrentDate
-        Message = $Message
     }
 }
 
@@ -521,13 +409,7 @@ function Start-MailboxMigration {
         [switch]$AcceptLargeDataLoss,
         
         [Parameter(Mandatory = $false)]
-        [int]$BadItemLimit = 10,
-        
-        [Parameter(Mandatory = $false)]
-        [int]$MaxConcurrentMigrations = 10,
-        
-        [Parameter(Mandatory = $false)]
-        [int]$StatusCheckIntervalMinutes = 15
+        [int]$BadItemLimit = 10
     )
     
     Write-Log "Starting mailbox migration process" -Level "INFO"
@@ -542,21 +424,16 @@ function Start-MailboxMigration {
     
     # Statistics
     $TotalMailboxes = $MailboxPairs.Count
-    $SuccessfulMigrations = 0
-    $FailedMigrations = 0
-    $InProgressMigrations = 0
+    $SuccessfulInitiations = 0
+    $FailedInitiations = 0
     
     Write-Log "Found $TotalMailboxes mailbox pairs to migrate" -Level "INFO"
     
-    # Create restore requests
-    $RestoreRequests = @()
-    $BatchCount = [Math]::Min($TotalMailboxes, $MaxConcurrentMigrations)
+    # Initialize status report
+    $StatusReport = @()
     
-    Write-Log "Creating restore requests for first batch of $BatchCount mailboxes" -Level "INFO"
-    
-    for ($i = 0; $i -lt $BatchCount; $i++) {
-        $MailboxPair = $MailboxPairs[$i]
-        
+    # Process each mailbox pair
+    foreach ($MailboxPair in $MailboxPairs) {
         # Create restore request parameters
         $RestoreParams = @{
             MailboxPair = $MailboxPair
@@ -576,144 +453,40 @@ function Start-MailboxMigration {
         $RestoreRequest = Start-MailboxRestoreRequest @RestoreParams
         
         if ($RestoreRequest) {
-            $RestoreRequests += $RestoreRequest
-            $InProgressMigrations++
-            Write-Log "Started migration for $($MailboxPair.OnPremIdentity) -> $($MailboxPair.CloudIdentity)" -Level "SUCCESS"
+            $SuccessfulInitiations++
+            Write-Log "Successfully initiated migration for $($MailboxPair.OnPremIdentity) -> $($MailboxPair.CloudIdentity)" -Level "SUCCESS"
+            
+            # Add to status report
+            $StatusReport += [PSCustomObject]@{
+                OnPremIdentity = $MailboxPair.OnPremIdentity
+                CloudIdentity = $MailboxPair.CloudIdentity
+                RequestId = $RestoreRequest.RequestId
+                RequestName = $RestoreRequest.RequestName
+                Status = "Initiated"
+                StartTime = Get-Date
+            }
         }
         else {
-            $FailedMigrations++
-            Write-Log "Failed to start migration for $($MailboxPair.OnPremIdentity)" -Level "ERROR"
+            $FailedInitiations++
+            Write-Log "Failed to initiate migration for $($MailboxPair.OnPremIdentity)" -Level "ERROR"
             
-            # Update status for failed migration
-            $StatusResult = Update-MigrationStatus -OnPremIdentity $MailboxPair.OnPremIdentity -CloudIdentity $MailboxPair.CloudIdentity -Status "Failed" -Message "Failed to create restore request"
-        }
-    }
-    
-    # Initialize status report
-    $StatusReport = @()
-    
-    # Process remaining mailboxes as current ones complete
-    $NextMailboxIndex = $BatchCount
-    
-    while ($RestoreRequests.Count -gt 0) {
-        Write-Log "Checking status of $($RestoreRequests.Count) active restore requests" -Level "INFO"
-        
-        # Wait for the specified interval
-        Start-Sleep -Seconds ($StatusCheckIntervalMinutes * 60)
-        
-        # Check status of each request
-        $CompletedRequests = @()
-        
-        foreach ($Request in $RestoreRequests) {
-            $Status = Get-RestoreRequestStatus -RequestId $Request.RequestId
-            
-            if ($Status.Status -eq "Completed" -or $Status.Status -eq "Failed" -or $Status.Status -eq "CompletedWithWarning") {
-                Write-Log "Migration completed for request $($Request.RequestId) with status: $($Status.Status)" -Level "INFO"
-                
-                # Update status
-                $StatusResult = Update-MigrationStatus -OnPremIdentity $Request.OnPremIdentity -CloudIdentity $Request.CloudIdentity -Status $Status.Status -Message $Status.Message
-                
-                # Add to status report
-                $StatusReport += [PSCustomObject]@{
-                    OnPremIdentity = $Request.OnPremIdentity
-                    CloudIdentity = $Request.CloudIdentity
-                    RequestId = $Request.RequestId
-                    Status = $Status.Status
-                    PercentComplete = $Status.PercentComplete
-                    CompletionTime = $Status.CompletionTime
-                    FailureCode = $Status.FailureCode
-                    FailureType = $Status.FailureType
-                    Message = $Status.Message
-                }
-                
-                # Update statistics
-                if ($Status.Status -eq "Completed" -or $Status.Status -eq "CompletedWithWarning") {
-                    $SuccessfulMigrations++
-                }
-                else {
-                    $FailedMigrations++
-                }
-                
-                $InProgressMigrations--
-                
-                # Mark request as completed
-                $CompletedRequests += $Request
-                
-                # Start a new migration if there are more mailboxes to process
-                if ($NextMailboxIndex -lt $TotalMailboxes) {
-                    $MailboxPair = $MailboxPairs[$NextMailboxIndex]
-                    
-                    # Create restore request parameters
-                    $RestoreParams = @{
-                        MailboxPair = $MailboxPair
-                        BadItemLimit = $BadItemLimit
-                    }
-                    
-                    if ($AllowLargeItems) {
-                        $RestoreParams.Add("AllowLargeItems", $true)
-                        $RestoreParams.Add("LargeItemLimit", $LargeItemLimit)
-                    }
-                    
-                    if ($AcceptLargeDataLoss) {
-                        $RestoreParams.Add("AcceptLargeDataLoss", $true)
-                    }
-                    
-                    # Start restore request
-                    $NewRestoreRequest = Start-MailboxRestoreRequest @RestoreParams
-                    
-                    if ($NewRestoreRequest) {
-                        $RestoreRequests += $NewRestoreRequest
-                        $InProgressMigrations++
-                        Write-Log "Started migration for $($MailboxPair.OnPremIdentity) -> $($MailboxPair.CloudIdentity)" -Level "SUCCESS"
-                    }
-                    else {
-                        $FailedMigrations++
-                        Write-Log "Failed to start migration for $($MailboxPair.OnPremIdentity)" -Level "ERROR"
-                        
-                        # Update status for failed migration
-                        $StatusResult = Update-MigrationStatus -OnPremIdentity $MailboxPair.OnPremIdentity -CloudIdentity $MailboxPair.CloudIdentity -Status "Failed" -Message "Failed to create restore request"
-                        
-                        # Add to status report
-                        $StatusReport += [PSCustomObject]@{
-                            OnPremIdentity = $MailboxPair.OnPremIdentity
-                            CloudIdentity = $MailboxPair.CloudIdentity
-                            RequestId = "N/A"
-                            Status = "Failed"
-                            PercentComplete = 0
-                            CompletionTime = Get-Date
-                            FailureCode = "RequestCreationFailed"
-                            FailureType = "Error"
-                            Message = "Failed to create restore request"
-                        }
-                    }
-                    
-                    $NextMailboxIndex++
-                }
-            }
-            else {
-                Write-Log "Migration in progress for request $($Request.RequestId): $($Status.Status) ($($Status.PercentComplete)% complete)" -Level "INFO"
+            # Add to status report
+            $StatusReport += [PSCustomObject]@{
+                OnPremIdentity = $MailboxPair.OnPremIdentity
+                CloudIdentity = $MailboxPair.CloudIdentity
+                RequestId = "N/A"
+                RequestName = "N/A"
+                Status = "Failed"
+                StartTime = Get-Date
             }
         }
-        
-        # Remove completed requests from active list
-        foreach ($CompletedRequest in $CompletedRequests) {
-            $RestoreRequests = $RestoreRequests | Where-Object { $_.RequestId -ne $CompletedRequest.RequestId }
-        }
-        
-        # Display current statistics
-        Write-Log "Current migration status:" -Level "INFO"
-        Write-Log "- Total mailboxes: $TotalMailboxes" -Level "INFO"
-        Write-Log "- Successful migrations: $SuccessfulMigrations" -Level "SUCCESS"
-        Write-Log "- Failed migrations: $FailedMigrations" -Level "WARNING"
-        Write-Log "- In progress migrations: $InProgressMigrations" -Level "INFO"
-        Write-Log "- Remaining mailboxes: $($TotalMailboxes - $SuccessfulMigrations - $FailedMigrations - $InProgressMigrations)" -Level "INFO"
     }
     
     # Export status report
     if ($StatusReport.Count -gt 0) {
         try {
             $StatusReport | Export-Csv -Path $StatusReportFile -NoTypeInformation -Force
-            Write-Log "Exported migration status report to $StatusReportFile" -Level "SUCCESS"
+            Write-Log "Exported migration initiation status report to $StatusReportFile" -Level "SUCCESS"
         }
         catch {
             Write-Log "Error exporting status report: $($_.Exception.Message)" -Level "ERROR"
@@ -721,10 +494,11 @@ function Start-MailboxMigration {
     }
     
     # Display final statistics
-    Write-Log "Migration process complete. Final summary:" -Level "INFO"
+    Write-Log "Migration initiation process complete. Final summary:" -Level "INFO"
     Write-Log "- Total mailboxes: $TotalMailboxes" -Level "INFO"
-    Write-Log "- Successful migrations: $SuccessfulMigrations" -Level "SUCCESS"
-    Write-Log "- Failed migrations: $FailedMigrations" -Level "WARNING"
+    Write-Log "- Successful initiations: $SuccessfulInitiations" -Level "SUCCESS"
+    Write-Log "- Failed initiations: $FailedInitiations" -Level "WARNING"
+    Write-Log "- Migration verification will be handled by a separate script" -Level "INFO"
 }
 
 #==========================================================================
@@ -750,8 +524,6 @@ try {
     $AcceptLargeDataLoss = $false
     $BadItemLimit = 10
     $LargeItemLimit = 50
-    $MaxConcurrentMigrations = 10
-    $StatusCheckIntervalMinutes = 15
     
     $AllowLargeItemsResponse = Read-Host "Allow large items during migration? (y/n, default: n)"
     if ($AllowLargeItemsResponse -eq "y") {
@@ -772,21 +544,9 @@ try {
         $BadItemLimit = [int]$BadItemLimitResponse
     }
     
-    $MaxConcurrentMigrationsResponse = Read-Host "Maximum concurrent migrations (default: 10)"
-    if ($MaxConcurrentMigrationsResponse -match "^\d+$") {
-        $MaxConcurrentMigrations = [int]$MaxConcurrentMigrationsResponse
-    }
-    
-    $StatusCheckIntervalResponse = Read-Host "Status check interval in minutes (default: 15)"
-    if ($StatusCheckIntervalResponse -match "^\d+$") {
-        $StatusCheckIntervalMinutes = [int]$StatusCheckIntervalResponse
-    }
-    
     # Start mailbox migration process
     $MigrationParams = @{
         BadItemLimit = $BadItemLimit
-        MaxConcurrentMigrations = $MaxConcurrentMigrations
-        StatusCheckIntervalMinutes = $StatusCheckIntervalMinutes
     }
     
     if ($AllowLargeItems) {

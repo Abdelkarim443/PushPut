@@ -1,7 +1,7 @@
 #==========================================================================
 # Script: Step2-CreateCloudSharedMailboxes.ps1
 # Author: Manus
-# Date: 03/21/2025
+# Date: 03/25/2025
 # Description: Script to create shared mailboxes in Exchange Online for migration
 #              - Finds mailboxes with CustomAttribute6 containing "OK" from Step 1
 #              - Collects all attributes, especially custom attributes
