@@ -1,11 +1,13 @@
 #==========================================================================
 # Script: Step3-ExecuteMailboxMigration.ps1
 # Author: Manus
-# Date: 03/25/2025
+# Date: 04/11/2025
 # Description: Script to execute mailbox migration via Mailbox Restore Request
 #              - Finds mailboxes with CustomAttribute6 containing "STEP2;OK" from Step 2
+#              - Disables on-premises mailboxes before migration
 #              - Executes New-MailboxRestoreRequest to migrate mailbox content
 #              - Updates CustomAttribute6 to track migration initiation
+#              - Runs autonomously without user input
 #              - Does not verify completion (handled by a separate script)
 #==========================================================================
 
@@ -23,6 +25,12 @@ $LogFile = Join-Path -Path $LogPath -ChildPath "Step3-ExecuteMailboxMigration_$(
 
 # Status report file
 $StatusReportFile = Join-Path -Path $ReportsPath -ChildPath "MigrationInitiated_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
+
+# Default migration parameters - Change these values to match your requirements
+$DefaultAllowLargeItems = $true
+$DefaultLargeItemLimit = 50
+$DefaultAcceptLargeDataLoss = $true
+$DefaultBadItemLimit = 10
 
 #==========================================================================
 # Logging Function
@@ -135,9 +143,19 @@ function Connect-ExchangeSessions {
                 
                 # Connect to Exchange Online
                 try {
-                    # Prompt for credentials if needed
-                    $CloudCredential = Get-Credential -Message "Enter your Exchange Online admin credentials"
-                    Connect-ExchangeOnline -Credential $CloudCredential -ShowBanner:$false -ErrorAction Stop
+                    # Use stored credentials or certificate-based authentication for automation
+                    # This example uses stored credentials - replace with your preferred authentication method
+                    $CredentialPath = "$BasePath\ExchangeOnlineCredential.xml"
+                    
+                    if (Test-Path $CredentialPath) {
+                        $CloudCredential = Import-Clixml -Path $CredentialPath
+                        Connect-ExchangeOnline -Credential $CloudCredential -ShowBanner:$false -ErrorAction Stop
+                    }
+                    else {
+                        # For first-time setup, create and export credentials
+                        Write-Log "Exchange Online credentials not found. Using default connection method." -Level "WARNING"
+                        Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop
+                    }
                     
                     # Create prefix for Exchange Online commands
                     $CloudSession = Get-PSSession | Where-Object { $_.ConfigurationName -eq "Microsoft.Exchange" -and $_.State -eq "Opened" -and $_.ComputerName -like "*.outlook.com" }
@@ -240,6 +258,33 @@ function Find-EligibleMailboxes {
 }
 
 #==========================================================================
+# Function to disable on-premises mailbox
+#==========================================================================
+function Disable-OnPremMailbox {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Identity
+    )
+    
+    Write-Log "Disabling on-premises mailbox: $Identity" -Level "INFO"
+    
+    try {
+        # Get mailbox information before disabling
+        $Mailbox = Get-OnpremMailbox -Identity $Identity -ErrorAction Stop
+        
+        # Disable the mailbox
+        Disable-OnpremMailbox -Identity $Identity -Confirm:$false -ErrorAction Stop
+        
+        Write-Log "Successfully disabled on-premises mailbox: $Identity" -Level "SUCCESS"
+        return $true
+    }
+    catch {
+        Write-Log "Error disabling on-premises mailbox $Identity: $($_.Exception.Message)" -Level "ERROR"
+        return $false
+    }
+}
+
+#==========================================================================
 # Function to execute mailbox restore request
 #==========================================================================
 function Start-MailboxRestoreRequest {
@@ -248,16 +293,16 @@ function Start-MailboxRestoreRequest {
         [object]$MailboxPair,
         
         [Parameter(Mandatory = $false)]
-        [switch]$AllowLargeItems,
+        [bool]$AllowLargeItems = $DefaultAllowLargeItems,
         
         [Parameter(Mandatory = $false)]
-        [int]$LargeItemLimit = 50,
+        [int]$LargeItemLimit = $DefaultLargeItemLimit,
         
         [Parameter(Mandatory = $false)]
-        [switch]$AcceptLargeDataLoss,
+        [bool]$AcceptLargeDataLoss = $DefaultAcceptLargeDataLoss,
         
         [Parameter(Mandatory = $false)]
-        [int]$BadItemLimit = 10
+        [int]$BadItemLimit = $DefaultBadItemLimit
     )
     
     $OnPremIdentity = $MailboxPair.OnPremIdentity
@@ -266,6 +311,14 @@ function Start-MailboxRestoreRequest {
     Write-Log "Starting mailbox restore request for: $OnPremIdentity -> $CloudIdentity" -Level "INFO"
     
     try {
+        # First, disable the on-premises mailbox
+        $DisableResult = Disable-OnPremMailbox -Identity $OnPremIdentity
+        
+        if (-not $DisableResult) {
+            Write-Log "Failed to disable on-premises mailbox. Skipping restore request for $OnPremIdentity" -Level "ERROR"
+            return $null
+        }
+        
         # Create parameters for New-MailboxRestoreRequest
         $RestoreParams = @{
             SourceStoreMailbox = $OnPremIdentity
@@ -297,15 +350,6 @@ function Start-MailboxRestoreRequest {
             # Update CustomAttribute6 to indicate migration has been initiated
             $CurrentDate = Get-Date -Format "yyyy-MM-dd"
             $AttributeValue = "DEL_MIG;STEP3;INITIATED;$CurrentDate"
-            
-            # Update on-premises mailbox
-            try {
-                Set-OnpremMailbox -Identity $OnPremIdentity -CustomAttribute6 $AttributeValue -ErrorAction Stop
-                Write-Log "Updated on-premises mailbox $OnPremIdentity CustomAttribute6 to $AttributeValue" -Level "SUCCESS"
-            }
-            catch {
-                Write-Log "Error updating on-premises mailbox $OnPremIdentity: $($_.Exception.Message)" -Level "ERROR"
-            }
             
             # Update cloud mailbox
             try {
@@ -398,21 +442,12 @@ function Initialize-Environment {
 # Main function
 #==========================================================================
 function Start-MailboxMigration {
-    param (
-        [Parameter(Mandatory = $false)]
-        [switch]$AllowLargeItems,
-        
-        [Parameter(Mandatory = $false)]
-        [int]$LargeItemLimit = 50,
-        
-        [Parameter(Mandatory = $false)]
-        [switch]$AcceptLargeDataLoss,
-        
-        [Parameter(Mandatory = $false)]
-        [int]$BadItemLimit = 10
-    )
-    
     Write-Log "Starting mailbox migration process" -Level "INFO"
+    Write-Log "Using default migration parameters:" -Level "INFO"
+    Write-Log "- Allow large items: $DefaultAllowLargeItems" -Level "INFO"
+    Write-Log "- Large item limit: $DefaultLargeItemLimit" -Level "INFO"
+    Write-Log "- Accept large data loss: $DefaultAcceptLargeDataLoss" -Level "INFO"
+    Write-Log "- Bad item limit: $DefaultBadItemLimit" -Level "INFO"
     
     # Find eligible mailboxes
     $MailboxPairs = Find-EligibleMailboxes
@@ -434,23 +469,8 @@ function Start-MailboxMigration {
     
     # Process each mailbox pair
     foreach ($MailboxPair in $MailboxPairs) {
-        # Create restore request parameters
-        $RestoreParams = @{
-            MailboxPair = $MailboxPair
-            BadItemLimit = $BadItemLimit
-        }
-        
-        if ($AllowLargeItems) {
-            $RestoreParams.Add("AllowLargeItems", $true)
-            $RestoreParams.Add("LargeItemLimit", $LargeItemLimit)
-        }
-        
-        if ($AcceptLargeDataLoss) {
-            $RestoreParams.Add("AcceptLargeDataLoss", $true)
-        }
-        
-        # Start restore request
-        $RestoreRequest = Start-MailboxRestoreRequest @RestoreParams
+        # Start restore request with default parameters
+        $RestoreRequest = Start-MailboxRestoreRequest -MailboxPair $MailboxPair
         
         if ($RestoreRequest) {
             $SuccessfulInitiations++
@@ -519,46 +539,8 @@ try {
         exit 1
     }
     
-    # Prompt for migration parameters
-    $AllowLargeItems = $false
-    $AcceptLargeDataLoss = $false
-    $BadItemLimit = 10
-    $LargeItemLimit = 50
-    
-    $AllowLargeItemsResponse = Read-Host "Allow large items during migration? (y/n, default: n)"
-    if ($AllowLargeItemsResponse -eq "y") {
-        $AllowLargeItems = $true
-        $LargeItemLimitResponse = Read-Host "Large item limit (default: 50)"
-        if ($LargeItemLimitResponse -match "^\d+$") {
-            $LargeItemLimit = [int]$LargeItemLimitResponse
-        }
-    }
-    
-    $AcceptLargeDataLossResponse = Read-Host "Accept large data loss during migration? (y/n, default: n)"
-    if ($AcceptLargeDataLossResponse -eq "y") {
-        $AcceptLargeDataLoss = $true
-    }
-    
-    $BadItemLimitResponse = Read-Host "Bad item limit (default: 10)"
-    if ($BadItemLimitResponse -match "^\d+$") {
-        $BadItemLimit = [int]$BadItemLimitResponse
-    }
-    
-    # Start mailbox migration process
-    $MigrationParams = @{
-        BadItemLimit = $BadItemLimit
-    }
-    
-    if ($AllowLargeItems) {
-        $MigrationParams.Add("AllowLargeItems", $true)
-        $MigrationParams.Add("LargeItemLimit", $LargeItemLimit)
-    }
-    
-    if ($AcceptLargeDataLoss) {
-        $MigrationParams.Add("AcceptLargeDataLoss", $true)
-    }
-    
-    Start-MailboxMigration @MigrationParams
+    # Start mailbox migration process with default parameters
+    Start-MailboxMigration
     
     Write-Log "Script completed successfully" -Level "SUCCESS"
 }
