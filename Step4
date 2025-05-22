@@ -1,0 +1,442 @@
+#==========================================================================
+# Script: Step4-ExecuteMailboxMigration.ps1
+# Author: Abdelkarim LAMNAOUAR
+# Date: 05/22/2025
+# Description: Script to execute mailbox migration via Mailbox Restore Request
+#              - Processes batch files with restore commands created by Step3
+#              - Executes the restore commands to migrate mailbox content
+#              - Updates CustomAttribute6 to track migration initiation
+#              - Runs autonomously without user input
+#==========================================================================
+
+#==========================================================================
+# Configuration - Predefined Paths
+#==========================================================================
+# Base paths - Update these paths to match your environment
+$BasePath = "C:\ExchangeMigration"
+$LogPath = "$BasePath\Logs"
+$BatchFilesPath = "$BasePath\BatchFiles"
+$ReportsPath = "$BasePath\Reports"
+
+# Log file
+$LogFile = Join-Path -Path $LogPath -ChildPath "Step4-ExecuteMailboxMigration_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+
+# Status report file
+$StatusReportFile = Join-Path -Path $ReportsPath -ChildPath "MigrationExecuted_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
+
+#==========================================================================
+# Logging Function
+#==========================================================================
+function Write-Log {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
+        [string]$Level = "INFO"
+    )
+    
+    # Create log folder if it doesn't exist
+    if (-not (Test-Path -Path $LogPath)) {
+        try {
+            New-Item -Path $LogPath -ItemType Directory -Force | Out-Null
+            Write-Output "Log folder created: $LogPath"
+        }
+        catch {
+            Write-Error "Unable to create log folder: $($_.Exception.Message)"
+            return
+        }
+    }
+    
+    # Log message format
+    $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $LogMessage = "[$TimeStamp] [$Level] $Message"
+    
+    # Write to log file
+    try {
+        Add-Content -Path $LogFile -Value $LogMessage -ErrorAction Stop
+    }
+    catch {
+        Write-Error "Unable to write to log file: $($_.Exception.Message)"
+    }
+    
+    # Also display in console with color coding
+    switch ($Level) {
+        "INFO" { Write-Host $LogMessage -ForegroundColor Cyan }
+        "WARNING" { Write-Host $LogMessage -ForegroundColor Yellow }
+        "ERROR" { Write-Host $LogMessage -ForegroundColor Red }
+        "SUCCESS" { Write-Host $LogMessage -ForegroundColor Green }
+        default { Write-Host $LogMessage }
+    }
+}
+
+#==========================================================================
+# Function to establish Exchange sessions
+#==========================================================================
+function Connect-ExchangeSessions {
+    Write-Log "Setting up Exchange sessions" -Level "INFO"
+    
+    $SessionsCreated = $true
+    
+    # Check if Exchange Online commands are available
+    if (-not (Get-Command Get-CloudMailbox -ErrorAction SilentlyContinue)) {
+        Write-Log "Exchange Online commands not found. Creating prefix for Exchange Online." -Level "INFO"
+        
+        # Check if Exchange Online module is installed
+        if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
+            Write-Log "Exchange Online Management module is not installed. Please install it using: Install-Module -Name ExchangeOnlineManagement" -Level "ERROR"
+            $SessionsCreated = $false
+        }
+        else {
+            # Import Exchange Online module
+            try {
+                Import-Module ExchangeOnlineManagement -ErrorAction Stop
+                Write-Log "Exchange Online Management module imported successfully" -Level "SUCCESS"
+                
+                # Connect to Exchange Online
+                try {
+                    # Use stored credentials or certificate-based authentication for automation
+                    # This example uses stored credentials - replace with your preferred authentication method
+                    $CredentialPath = "$BasePath\ExchangeOnlineCredential.xml"
+                    
+                    if (Test-Path $CredentialPath) {
+                        $CloudCredential = Import-Clixml -Path $CredentialPath
+                        Connect-ExchangeOnline -Credential $CloudCredential -ShowBanner:$false -ErrorAction Stop
+                    }
+                    else {
+                        # For first-time setup, create and export credentials
+                        Write-Log "Exchange Online credentials not found. Using default connection method." -Level "WARNING"
+                        Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop
+                    }
+                    
+                    # Create prefix for Exchange Online commands
+                    $CloudSession = Get-PSSession | Where-Object { $_.ConfigurationName -eq "Microsoft.Exchange" -and $_.State -eq "Opened" -and $_.ComputerName -like "*.outlook.com" }
+                    if ($null -eq $CloudSession) {
+                        Write-Log "No active Exchange Online session found." -Level "ERROR"
+                        $SessionsCreated = $false
+                    }
+                    else {
+                        Import-PSSession $CloudSession -Prefix "Cloud" -DisableNameChecking -AllowClobber | Out-Null
+                        Write-Log "Exchange Online commands imported with 'Cloud' prefix" -Level "SUCCESS"
+                    }
+                }
+                catch {
+                    Write-Log "Error connecting to Exchange Online: $($_.Exception.Message)" -Level "ERROR"
+                    $SessionsCreated = $false
+                }
+            }
+            catch {
+                Write-Log "Error importing Exchange Online Management module: $($_.Exception.Message)" -Level "ERROR"
+                $SessionsCreated = $false
+            }
+        }
+    }
+    
+    return $SessionsCreated
+}
+
+#==========================================================================
+# Function to find batch files
+#==========================================================================
+function Find-BatchFiles {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$FolderPath
+    )
+    
+    Write-Log "Searching for batch files in: $FolderPath" -Level "INFO"
+    
+    # Get today's date for file matching
+    $TodayDate = Get-Date -Format "yyyyMMdd"
+    $FilePattern = "RestoreCommands_${TodayDate}_*.txt"
+    
+    try {
+        $BatchFiles = Get-ChildItem -Path $FolderPath -Filter $FilePattern -ErrorAction Stop
+        
+        $FileCount = $BatchFiles.Count
+        
+        if ($FileCount -eq 0) {
+            Write-Log "No batch files found for today's date ($TodayDate) in $FolderPath" -Level "WARNING"
+            return $null
+        }
+        
+        Write-Log "Found $FileCount batch files for today's date" -Level "SUCCESS"
+        return $BatchFiles
+    }
+    catch {
+        Write-Log "Error searching for batch files: $($_.Exception.Message)" -Level "ERROR"
+        return $null
+    }
+}
+
+#==========================================================================
+# Function to execute restore commands
+#==========================================================================
+function Execute-RestoreCommands {
+    param (
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$BatchFile
+    )
+    
+    $FileName = $BatchFile.Name
+    Write-Log "Processing batch file: $FileName" -Level "INFO"
+    
+    # Initialize counters
+    $TotalCommands = 0
+    $SuccessfulCommands = 0
+    $FailedCommands = 0
+    
+    # Initialize results collection
+    $Results = @()
+    
+    try {
+        # Read batch file content
+        $Commands = Get-Content -Path $BatchFile.FullName -ErrorAction Stop | Where-Object { $_ -match "^New-CloudMailboxRestoreRequest" }
+        
+        $TotalCommands = $Commands.Count
+        Write-Log "Found $TotalCommands restore commands in $FileName" -Level "INFO"
+        
+        if ($TotalCommands -eq 0) {
+            Write-Log "No valid restore commands found in $FileName" -Level "WARNING"
+            return $null
+        }
+        
+        # Process each command
+        foreach ($Command in $Commands) {
+            Write-Log "Executing command: $Command" -Level "INFO"
+            
+            # Extract target mailbox from command
+            $TargetMailbox = if ($Command -match "-TargetMailbox '([^']+)'") { $Matches[1] } else { "Unknown" }
+            $RequestName = if ($Command -match "-Name '([^']+)'") { $Matches[1] } else { "Unknown" }
+            
+            try {
+                # Execute the command
+                $Result = Invoke-Expression $Command
+                
+                if ($Result) {
+                    $SuccessfulCommands++
+                    Write-Log "Successfully executed restore request for $TargetMailbox" -Level "SUCCESS"
+                    
+                    # Update CustomAttribute6 to indicate migration has been initiated
+                    try {
+                        $CurrentDate = Get-Date -Format "yyyy-MM-dd"
+                        $AttributeValue = "DEL_MIG;STEP4;INITIATED;$CurrentDate"
+                        
+                        Set-CloudMailbox -Identity $TargetMailbox -CustomAttribute6 $AttributeValue -ErrorAction Stop
+                        Write-Log "Updated cloud mailbox $TargetMailbox CustomAttribute6 to $AttributeValue" -Level "SUCCESS"
+                    }
+                    catch {
+                        Write-Log "Error updating cloud mailbox $TargetMailbox: $($_.Exception.Message)" -Level "ERROR"
+                    }
+                    
+                    # Add to results
+                    $Results += [PSCustomObject]@{
+                        TargetMailbox = $TargetMailbox
+                        RequestName = $RequestName
+                        RequestId = $Result.Identity
+                        Status = "Success"
+                        ExecutionTime = Get-Date
+                    }
+                }
+                else {
+                    $FailedCommands++
+                    Write-Log "Failed to execute restore request for $TargetMailbox" -Level "ERROR"
+                    
+                    # Add to results
+                    $Results += [PSCustomObject]@{
+                        TargetMailbox = $TargetMailbox
+                        RequestName = $RequestName
+                        RequestId = "N/A"
+                        Status = "Failed"
+                        ExecutionTime = Get-Date
+                    }
+                }
+            }
+            catch {
+                $FailedCommands++
+                Write-Log "Error executing restore request for $TargetMailbox: $($_.Exception.Message)" -Level "ERROR"
+                
+                # Add to results
+                $Results += [PSCustomObject]@{
+                    TargetMailbox = $TargetMailbox
+                    RequestName = $RequestName
+                    RequestId = "N/A"
+                    Status = "Error"
+                    ExecutionTime = Get-Date
+                    ErrorMessage = $_.Exception.Message
+                }
+            }
+        }
+        
+        # Rename the batch file to indicate it has been processed
+        $ProcessedFileName = $BatchFile.Name -replace ".txt", "_Processed.txt"
+        $ProcessedFilePath = Join-Path -Path $BatchFile.DirectoryName -ChildPath $ProcessedFileName
+        
+        try {
+            Rename-Item -Path $BatchFile.FullName -NewName $ProcessedFileName -Force -ErrorAction Stop
+            Write-Log "Renamed batch file to $ProcessedFileName to indicate processing is complete" -Level "SUCCESS"
+        }
+        catch {
+            Write-Log "Error renaming batch file: $($_.Exception.Message)" -Level "ERROR"
+        }
+        
+        # Display summary for this batch
+        Write-Log "Batch processing complete for $FileName. Summary:" -Level "INFO"
+        Write-Log "- Total commands: $TotalCommands" -Level "INFO"
+        Write-Log "- Successful executions: $SuccessfulCommands" -Level "SUCCESS"
+        Write-Log "- Failed executions: $FailedCommands" -Level "WARNING"
+        
+        return $Results
+    }
+    catch {
+        Write-Log "Error processing batch file $FileName: $($_.Exception.Message)" -Level "ERROR"
+        return $null
+    }
+}
+
+#==========================================================================
+# Function to verify and create required folders
+#==========================================================================
+function Initialize-Environment {
+    Write-Log "Initializing environment and verifying paths" -Level "INFO"
+    
+    # Check and create base directory
+    if (-not (Test-Path -Path $BasePath)) {
+        try {
+            New-Item -Path $BasePath -ItemType Directory -Force | Out-Null
+            Write-Log "Base directory created: $BasePath" -Level "SUCCESS"
+        }
+        catch {
+            Write-Log "Error creating base directory: $($_.Exception.Message)" -Level "ERROR"
+            return $false
+        }
+    }
+    
+    # Check and create logs directory
+    if (-not (Test-Path -Path $LogPath)) {
+        try {
+            New-Item -Path $LogPath -ItemType Directory -Force | Out-Null
+            Write-Log "Logs directory created: $LogPath" -Level "SUCCESS"
+        }
+        catch {
+            Write-Log "Error creating logs directory: $($_.Exception.Message)" -Level "ERROR"
+            return $false
+        }
+    }
+    
+    # Check and create batch files directory
+    if (-not (Test-Path -Path $BatchFilesPath)) {
+        try {
+            New-Item -Path $BatchFilesPath -ItemType Directory -Force | Out-Null
+            Write-Log "Batch files directory created: $BatchFilesPath" -Level "SUCCESS"
+        }
+        catch {
+            Write-Log "Error creating batch files directory: $($_.Exception.Message)" -Level "ERROR"
+            return $false
+        }
+    }
+    
+    # Check and create reports directory
+    if (-not (Test-Path -Path $ReportsPath)) {
+        try {
+            New-Item -Path $ReportsPath -ItemType Directory -Force | Out-Null
+            Write-Log "Reports directory created: $ReportsPath" -Level "SUCCESS"
+        }
+        catch {
+            Write-Log "Error creating reports directory: $($_.Exception.Message)" -Level "ERROR"
+            return $false
+        }
+    }
+    
+    return $true
+}
+
+#==========================================================================
+# Main function
+#==========================================================================
+function Start-MailboxMigration {
+    Write-Log "Starting mailbox migration execution process" -Level "INFO"
+    
+    # Find batch files
+    $BatchFiles = Find-BatchFiles -FolderPath $BatchFilesPath
+    
+    if ($null -eq $BatchFiles -or $BatchFiles.Count -eq 0) {
+        Write-Log "No batch files found for today's date. Script ending." -Level "WARNING"
+        return
+    }
+    
+    # Statistics
+    $TotalBatches = $BatchFiles.Count
+    $ProcessedBatches = 0
+    $FailedBatches = 0
+    
+    Write-Log "Found $TotalBatches batch files to process" -Level "INFO"
+    
+    # Initialize results collection
+    $AllResults = @()
+    
+    # Process each batch file
+    foreach ($BatchFile in $BatchFiles) {
+        Write-Log "Processing batch file $($BatchFile.Name) ($($ProcessedBatches + 1) of $TotalBatches)" -Level "INFO"
+        
+        $Results = Execute-RestoreCommands -BatchFile $BatchFile
+        
+        if ($null -ne $Results -and $Results.Count -gt 0) {
+            $ProcessedBatches++
+            $AllResults += $Results
+        }
+        else {
+            $FailedBatches++
+        }
+    }
+    
+    # Export all results to a single report
+    if ($AllResults.Count -gt 0) {
+        try {
+            $AllResults | Export-Csv -Path $StatusReportFile -NoTypeInformation -Force
+            Write-Log "Exported migration execution status report to $StatusReportFile" -Level "SUCCESS"
+        }
+        catch {
+            Write-Log "Error exporting status report: $($_.Exception.Message)" -Level "ERROR"
+        }
+    }
+    
+    # Display final statistics
+    Write-Log "Migration execution process complete. Final summary:" -Level "INFO"
+    Write-Log "- Total batch files: $TotalBatches" -Level "INFO"
+    Write-Log "- Successfully processed batches: $ProcessedBatches" -Level "SUCCESS"
+    Write-Log "- Failed batches: $FailedBatches" -Level "WARNING"
+    Write-Log "- Total restore requests executed: $($AllResults.Count)" -Level "INFO"
+    Write-Log "- Successful restore requests: $($AllResults | Where-Object { $_.Status -eq 'Success' } | Measure-Object).Count" -Level "SUCCESS"
+    Write-Log "- Failed restore requests: $($AllResults | Where-Object { $_.Status -ne 'Success' } | Measure-Object).Count" -Level "WARNING"
+}
+
+#==========================================================================
+# Script execution
+#==========================================================================
+try {
+    # Initialize environment and verify paths
+    $EnvReady = Initialize-Environment
+    if (-not $EnvReady) {
+        Write-Log "Failed to initialize environment. Script cannot continue." -Level "ERROR"
+        exit 1
+    }
+    
+    # Setup Exchange sessions with proper prefixes
+    $SessionsReady = Connect-ExchangeSessions
+    if (-not $SessionsReady) {
+        Write-Log "Failed to set up required Exchange sessions. Script cannot continue." -Level "ERROR"
+        exit 1
+    }
+    
+    # Start mailbox migration execution process
+    Start-MailboxMigration
+    
+    Write-Log "Script completed successfully" -Level "SUCCESS"
+}
+catch {
+    Write-Log "Unhandled error in script: $($_.Exception.Message)" -Level "ERROR"
+    Write-Log "Error details: $($_.Exception.StackTrace)" -Level "ERROR"
+    exit 1
+}
